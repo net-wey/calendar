@@ -25,20 +25,15 @@ func New(url string) (*Storage, error) {
 	return &Storage{db: db}, nil
 }
 
-func (s *Storage) GetCalendar(uid uuid.UUID) error {
-	const op = "storage.postgres.GetCalendar"
+func (s *Storage) TaskExists(uid uuid.UUID) (bool, error) {
+	const op = "storage.postgres.TaskExists"
 
-	// Сначала проверяем существование задачи
 	var exists bool
 	err := s.db.QueryRow("SELECT EXISTS(SELECT 1 FROM tasks WHERE id = $1)", uid).Scan(&exists)
 	if err != nil {
-		return fmt.Errorf("%s: check task existence: %w", op, err)
+		return false, fmt.Errorf("%s: check task existence: %w", op, err)
 	}
-	if !exists {
-		return fmt.Errorf("%s: %w", op, er.ErrTaskNotFound)
-	}
-
-	return nil
+	return exists, nil
 }
 
 func (s *Storage) SaveTask(task entity.Task) (uuid.UUID, error) {
@@ -88,10 +83,9 @@ func (s *Storage) SaveTask(task entity.Task) (uuid.UUID, error) {
 func (s *Storage) GetTask(uid uuid.UUID) (entity.Task, error) {
 	const op = "storage.postgres.GetTask"
 
-	var exists bool
-	err := s.db.QueryRow("SELECT EXISTS(SELECT 1 FROM tasks WHERE id = $1)", uid).Scan(&exists)
+	exists, err := s.TaskExists(uid)
 	if err != nil {
-		return entity.Task{}, fmt.Errorf("%s: check task existence: %w", op, err)
+		return entity.Task{}, fmt.Errorf("%s: %w", op, err)
 	}
 	if !exists {
 		return entity.Task{}, fmt.Errorf("%s: %w", op, er.ErrTaskNotFound)

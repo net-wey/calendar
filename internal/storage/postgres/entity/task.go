@@ -1,11 +1,15 @@
 package entity
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type Task struct {
-	ID               uint
-	ReportID         uint
-	ProjectID        uint
+	ID               uuid.UUID
+	ReportID         uuid.UUID
+	ProjectID        uuid.UUID
 	Name             string
 	DeveloperNote    string
 	EstimatePlaned   int
@@ -13,6 +17,4 @@ type Task struct {
 	StartTimestamp   time.Time
 	EndTimestamp     time.Time
 	CreatedAt        time.Time
-	ModifiedAt       time.Time
-	DeletedAt        *time.Time
 }
