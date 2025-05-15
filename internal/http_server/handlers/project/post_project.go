@@ -76,7 +76,7 @@ func NewProjectHandler(saver ProjectSaverPost) http.HandlerFunc {
 			return
 		}
 
-		w.WriteHeader(http.StatusCreated)
+		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(ProjectResponsePost{
 			Status:  "ok",
 			Project: project,
