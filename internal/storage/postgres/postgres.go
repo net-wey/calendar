@@ -2,9 +2,11 @@ package postgres
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	er "goproject/internal/storage"
 	"goproject/internal/storage/postgres/entity"
+	"time"
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
@@ -24,6 +26,8 @@ func New(url string) (*Storage, error) {
 
 	return &Storage{db: db}, nil
 }
+
+/////TASKS//////
 
 func (s *Storage) TaskExists(uid uuid.UUID) (bool, error) {
 	const op = "storage.postgres.TaskExists"
@@ -121,3 +125,164 @@ func (s *Storage) GetTask(uid uuid.UUID) (entity.Task, error) {
 
 	return task, nil
 }
+
+/////////DEVELOPERS/////////////
+
+func (s *Storage) SaveDeveloper(developer entity.Developer) (uuid.UUID, error) {
+	const op = "storage.postgres.SaveDeveloper"
+
+	if developer.Name == "" || developer.LastName == "" {
+		return uuid.Nil, fmt.Errorf("%s: %w", op, er.ErrInvalidDeveloperData)
+	}
+
+	uid := uuid.New()
+
+	stmt, err := s.db.Prepare(
+		`INSERT INTO developers(
+			id,
+			name,
+			last_name,
+			created_at,			
+			modified_at,
+			deleted_at
+		) VALUES ($1, $2, $3, $4, $5, $6)`)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("%s: prepare statement: %w", op, err)
+	}
+	defer stmt.Close()
+
+	err = stmt.QueryRow(
+		uid,
+		developer.Name,
+		developer.LastName,
+		time.Now(),
+	).Scan(&developer.CreatedAt)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("%s: execute statement: %w", op, err)
+	}
+
+	return uid, nil
+}
+
+func (s *Storage) GetDeveloper(uid uuid.UUID) (entity.Developer, error) {
+	const op = "storage.postgres.GetDeveloper"
+
+	stmt, err := s.db.Prepare(`
+		SELECT id, name, last_name, created_at
+		FROM developers
+		WHERE id = $1`)
+	if err != nil {
+		return entity.Developer{}, fmt.Errorf("%s: prepare statement: %w", op, err)
+	}
+	defer stmt.Close()
+
+	var developer entity.Developer
+	err = stmt.QueryRow(uid).Scan(
+		&developer.ID,
+		&developer.Name,
+		&developer.LastName,
+		&developer.CreatedAt,
+	)
+	if err != nil {
+		return entity.Developer{}, fmt.Errorf("%s: execute statement: %w", op, err)
+	}
+
+	return developer, nil
+}
+
+func (s *Storage) GetDevelopers() ([]entity.Developer, error) {
+	const op = "storage.postgres.GetDevelopers"
+
+	stmt, err := s.db.Prepare(`
+		SELECT id, name, last_name, created_at
+		FROM developers`)
+	if err != nil {
+		return nil, fmt.Errorf("%s: prepare statement: %w", op, err)
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		return nil, fmt.Errorf("%s: execute statement: %w", op, err)
+	}
+	defer rows.Close()
+
+	var developers []entity.Developer
+	for rows.Next() {
+		var developer entity.Developer
+		err := rows.Scan(
+			&developer.ID,
+			&developer.Name,
+			&developer.LastName,
+			&developer.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("%s: scan row: %w", op, err)
+		}
+		developers = append(developers, developer)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: rows error: %w", op, err)
+	}
+
+	return developers, nil
+}
+
+func (s *Storage) UpdateDeveloper(uid uuid.UUID, developer entity.Developer) error {
+	const op = "storage.postgres.UpdateDeveloper"
+
+	stmt, err := s.db.Prepare(
+		`UPDATE developers SET 
+		name = $1,
+		last_name = $2
+		WHERE id = $3`)
+	if err != nil {
+		return fmt.Errorf("%s: prepare statement: %w", op, err)
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(
+		developer.Name,
+		developer.LastName,
+		uid,
+	)
+	if err != nil {
+		return fmt.Errorf("%s: execute statement: %w", op, err)
+	}
+
+	return nil
+}
+
+func (s *Storage) SoftDeleteDeveloper(uid uuid.UUID) error {
+	const op = "storage.postgres.SoftDeleteDeveloper"
+
+	currentTime := time.Now()
+
+	stmt, err := s.db.Prepare(`
+        UPDATE developers 
+        SET 
+            deleted_at = $1,
+            modified_at = $2 
+        WHERE id = $3
+        RETURNING modified_at`)
+
+	if err != nil {
+		return fmt.Errorf("%s: prepare statement: %w", op, err)
+	}
+	defer stmt.Close()
+
+	var updatedAt time.Time
+	err = stmt.QueryRow("Удалён", currentTime, uid).Scan(&updatedAt)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%s: developer not found: %w", op, err)
+		}
+		return fmt.Errorf("%s: execute statement: %w", op, err)
+	}
+
+	return nil
+}
+
+/////////////////////////////////

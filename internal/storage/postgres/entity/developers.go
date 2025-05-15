@@ -8,8 +8,8 @@ import (
 
 type Developer struct {
 	ID         uuid.UUID
-	Firstname  string
-	Lastname   string
+	Name       string
+	LastName   string
 	CreatedAt  time.Time
 	ModifiedAt time.Time
 	DeletedAt  *time.Time

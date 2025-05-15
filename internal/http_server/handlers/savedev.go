@@ -12,29 +12,25 @@ import (
 )
 
 type DeveloperRequest struct {
-	Firstname string     `json:"firstname"`
-	Lastname  string     `json:"last_name"`
+	Name      string     `json:"name"`
+	LastName  string     `json:"last_name"`
 	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 }
 
-// DeveloperResponse представляет структуру ответа на запрос создания разработчика
 type DeveloperResponse struct {
 	Status      string    `json:"status"`
 	Error       string    `json:"error,omitempty"`
 	DeveloperID uuid.UUID `json:"developer_id,omitempty"`
 }
 
-// DeveloperSaver определяет интерфейс для сохранения информации о разработчике
 type DeveloperSaver interface {
 	SaveDeveloper(developer entity.Developer) (uuid.UUID, error)
 }
 
-// NewDeveloperHandler создает новый обработчик HTTP для сохранения разработчика
 func NewDeveloperHandler(saver DeveloperSaver) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
-		// Проверяем метод запроса
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			json.NewEncoder(w).Encode(DeveloperResponse{
@@ -44,7 +40,6 @@ func NewDeveloperHandler(saver DeveloperSaver) http.HandlerFunc {
 			return
 		}
 
-		// Декодируем тело запроса
 		var req DeveloperRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -55,8 +50,7 @@ func NewDeveloperHandler(saver DeveloperSaver) http.HandlerFunc {
 			return
 		}
 
-		// Валидация данных
-		if req.Firstname == "" || req.Lastname == "" {
+		if req.Name == "" || req.LastName == "" {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(DeveloperResponse{
 				Status: "error",
@@ -65,14 +59,12 @@ func NewDeveloperHandler(saver DeveloperSaver) http.HandlerFunc {
 			return
 		}
 
-		// Подготавливаем сущность Developer
 		developer := entity.Developer{
-			Firstname: req.Firstname,
-			Lastname:  req.Lastname,
+			Name:      req.Name,
+			LastName:  req.LastName,
 			DeletedAt: req.DeletedAt,
 		}
 
-		// Сохраняем разработчика
 		developerID, err := saver.SaveDeveloper(developer)
 		if err != nil {
 			if errors.Is(err, er.ErrInvalidDeveloperData) {
@@ -92,7 +84,6 @@ func NewDeveloperHandler(saver DeveloperSaver) http.HandlerFunc {
 			return
 		}
 
-		// Успешный ответ
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(DeveloperResponse{
 			Status:      "ok",
