@@ -1,32 +1,23 @@
 package main
 
 import (
-	"fmt"
-	"log"
-
+	"goproject/internal/config"
 	"goproject/internal/storage/postgres"
-)
-
-const (
-	host     = "localhost"
-	port     = 5432
-	user     = "postgres"
-	password = "postgres"
-	dbname   = "feedbox"
+	"log"
+	"net/http"
 )
 
 func main() {
-	// Формируем строку подключения к БД
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-		host, port, user, password, dbname)
+	cfg, msg := config.MustLoad()
 
-	// Инициализируем подключение к БД
-	db, err := postgres.New(psqlInfo)
+	storage, err := postgres.New(cfg.StoragePath)
 	if err != nil {
-		log.Fatalf("Failed to initialize storage: %v", err)
+		log.Fatalf("failed to connect to database: %v", err)
 	}
+	defer storage.Close()
 
-	// Используем db для дальнейшей работы
-	_ = db // временно, чтобы не было ошибки неиспользуемой переменной
+	log.Println(msg)
+
+	http.ListenAndServe(cfg.HTTPServer.Address, nil)
 
 }

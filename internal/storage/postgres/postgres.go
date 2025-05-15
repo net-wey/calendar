@@ -29,45 +29,32 @@ func New(url string) (*Storage, error) {
 
 /////TASKS//////
 
-func (s *Storage) TaskExists(uid uuid.UUID) (bool, error) {
-	const op = "storage.postgres.TaskExists"
-
-	var exists bool
-	err := s.db.QueryRow("SELECT EXISTS(SELECT 1 FROM tasks WHERE id = $1)", uid).Scan(&exists)
-	if err != nil {
-		return false, fmt.Errorf("%s: check task existence: %w", op, err)
-	}
-	return exists, nil
-}
-
-func (s *Storage) SaveTask(task entity.Task) (uuid.UUID, error) {
+func (s *Storage) SaveTask(task entity.Task) (int, error) {
 	const op = "storage.postgres.SaveTask"
 
 	if task.Name == "" || task.EstimatePlaned <= 0 {
-		return uuid.Nil, fmt.Errorf("%s: %w", op, er.ErrInvalidTaskData)
+		return 0, fmt.Errorf("%s: %w", op, er.ErrInvalidTaskData)
 	}
 
 	stmt, err := s.db.Prepare(
 		`INSERT INTO tasks(
-			id,
-			report_id,
-			project_id,
-			name,
-			developer_note,
-			estimate_planed,
-			estimate_progress,
-			start_timestamp,
-			end_timestamp
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		RETURNING created_at`)
+            report_id,
+            project_id,
+            name,
+            developer_note,
+            estimate_planed,
+            estimate_progress,
+            start_timestamp,
+            end_timestamp
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id, created_at`) // Changed to return both id and created_at
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("%s: prepare statement: %w", op, err)
+		return 0, fmt.Errorf("%s: prepare statement: %w", op, err)
 	}
 	defer stmt.Close()
 
-	uid := uuid.New()
+	var id int
 	err = stmt.QueryRow(
-		uid,
 		task.ReportID,
 		task.ProjectID,
 		task.Name,
@@ -76,24 +63,16 @@ func (s *Storage) SaveTask(task entity.Task) (uuid.UUID, error) {
 		task.EstimateProgress,
 		task.StartTimestamp,
 		task.EndTimestamp,
-	).Scan(&task.CreatedAt)
+	).Scan(&id, &task.CreatedAt) // Scan both id and created_at
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("%s: execute statement: %w", op, err)
+		return 0, fmt.Errorf("%s: execute statement: %w", op, err)
 	}
 
-	return uid, nil
+	return id, nil
 }
 
-func (s *Storage) GetTask(uid uuid.UUID) (entity.Task, error) {
+func (s *Storage) GetTaskByID(ID uint) (entity.Task, error) {
 	const op = "storage.postgres.GetTask"
-
-	exists, err := s.TaskExists(uid)
-	if err != nil {
-		return entity.Task{}, fmt.Errorf("%s: %w", op, err)
-	}
-	if !exists {
-		return entity.Task{}, fmt.Errorf("%s: %w", op, er.ErrTaskNotFound)
-	}
 
 	stmt, err := s.db.Prepare(`
 		SELECT id, report_id, project_id, name, developer_note, 
@@ -107,7 +86,7 @@ func (s *Storage) GetTask(uid uuid.UUID) (entity.Task, error) {
 	defer stmt.Close()
 
 	var task entity.Task
-	err = stmt.QueryRow(uid).Scan(
+	err = stmt.QueryRow(ID).Scan(
 		&task.ID,
 		&task.ReportID,
 		&task.ProjectID,
@@ -124,6 +103,99 @@ func (s *Storage) GetTask(uid uuid.UUID) (entity.Task, error) {
 	}
 
 	return task, nil
+}
+
+func (s *Storage) GetTasks() ([]entity.Task, error) {
+	const op = "storage.postgres.GetTasks"
+
+	stmt, err := s.db.Prepare(`
+        SELECT id, report_id, project_id, name, developer_note, 
+               estimate_planed, estimate_progress, 
+               start_timestamp, end_timestamp, created_at
+        FROM tasks
+    `)
+	if err != nil {
+		return nil, fmt.Errorf("%s: prepare statement: %w", op, err)
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		return nil, fmt.Errorf("%s: execute statement: %w", op, err)
+	}
+	defer rows.Close()
+
+	var tasks []entity.Task
+	for rows.Next() {
+		var task entity.Task
+		err := rows.Scan(
+			&task.ID,
+			&task.ReportID,
+			&task.ProjectID,
+			&task.Name,
+			&task.DeveloperNote,
+			&task.EstimatePlaned,
+			&task.EstimateProgress,
+			&task.StartTimestamp,
+			&task.EndTimestamp,
+			&task.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("%s: scan row: %w", op, err)
+		}
+		tasks = append(tasks, task)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: rows error: %w", op, err)
+	}
+
+	return tasks, nil
+}
+
+func (s *Storage) GetTasksByReportID(ID uint) ([]entity.Task, error) {
+	const op = "storage.postgres.GetTasksByReportID"
+
+	stmt, err := s.db.Prepare(`
+		SELECT id, report_id, project_id, name, developer_note, 
+               estimate_planed, estimate_progress, 
+               start_timestamp, end_timestamp, created_at
+        FROM tasks
+		WHERE report_id = $1
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("%s: prepare statement: %w", op, err)
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		return nil, fmt.Errorf("%s: execute statement: %w", op, err)
+	}
+	defer rows.Close()
+
+	var tasks []entity.Task
+	for rows.Next() {
+		var task entity.Task
+		err := rows.Scan(
+			&task.ID,
+			&task.ReportID,
+			&task.ProjectID,
+			&task.Name,
+			&task.DeveloperNote,
+			&task.EstimatePlaned,
+			&task.EstimateProgress,
+			&task.StartTimestamp,
+			&task.EndTimestamp,
+			&task.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("%s: scan row: %w", op, err)
+		}
+		tasks = append(tasks, task)
+	}
+
+	return tasks, nil
 }
 
 /////////DEVELOPERS/////////////
@@ -164,7 +236,7 @@ func (s *Storage) SaveDeveloper(developer entity.Developer) (uuid.UUID, error) {
 	return uid, nil
 }
 
-func (s *Storage) GetDeveloper(uid uuid.UUID) (entity.Developer, error) {
+func (s *Storage) GetDeveloperByID(uid uuid.UUID) (entity.Developer, error) {
 	const op = "storage.postgres.GetDeveloper"
 
 	stmt, err := s.db.Prepare(`
@@ -285,4 +357,255 @@ func (s *Storage) SoftDeleteDeveloper(uid uuid.UUID) error {
 	return nil
 }
 
-/////////////////////////////////
+/////////////////////////////////REPORTS//////////////////////////////
+
+func (s *Storage) SaveReport(report entity.Report) error {
+	const op = "storage.postgres.SaveReport"
+
+	stmt, err := s.db.Prepare(
+		`INSERT INTO reports(
+    		developer_id,
+    	c	reated_at
+    	) VALUES ($1, $2)
+    	RETURNING id, created_at`)
+	if err != nil {
+		return fmt.Errorf("%s: prepare statement: %w", op, err)
+	}
+	defer stmt.Close()
+
+	err = stmt.QueryRow(
+		report.DeveloperID,
+		time.Now(),
+	).Scan(&report.ID, &report.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("%s: execute statement: %w", op, err)
+	}
+	return nil
+}
+
+func (s *Storage) GetReport() ([]entity.Report, error) {
+	const op = "storage.postgres.GetReport"
+
+	stmt, err := s.db.Prepare(`
+    SELECT id, developer_id, created_at
+    FROM reports
+    ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("%s: prepare statement: %w", op, err)
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		return nil, fmt.Errorf("%s: execute statement: %w", op, err)
+	}
+	defer rows.Close()
+
+	var reports []entity.Report
+	for rows.Next() {
+		var report entity.Report
+		err := rows.Scan(
+			&report.ID,
+			&report.DeveloperID,
+			&report.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("%s: scan row: %w", op, err)
+		}
+		reports = append(reports, report)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: rows error: %w", op, err)
+	}
+
+	return reports, nil
+}
+
+func (s *Storage) GetReportById(id uint) (entity.Report, error) {
+	const op = "storage.postgres.GetReportById"
+
+	stmt, err := s.db.Prepare(`
+    SELECT id, developer_id, created_at
+    FROM reports  
+    WHERE id = $1`)
+	if err != nil {
+		return entity.Report{}, fmt.Errorf("%s: prepare statement: %w", op, err)
+	}
+	defer stmt.Close()
+
+	var report entity.Report
+	err = stmt.QueryRow(id).Scan(
+		&report.ID,
+		&report.DeveloperID,
+		&report.CreatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return entity.Report{}, fmt.Errorf("%s: %w", op, er.ErrReportNotFound)
+		}
+		return entity.Report{}, fmt.Errorf("%s: execute statement: %w", op, err)
+	}
+
+	return report, nil
+}
+
+func (s *Storage) GetReportsByDeveloperID(developerID uuid.UUID) ([]entity.Report, error) {
+	const op = "storage.postgres.GetReportsByDeveloperID"
+
+	stmt, err := s.db.Prepare(`
+        SELECT id, developer_id, created_at
+        FROM reports
+        WHERE developer_id = $1
+        ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("%s: prepare statement: %w", op, err)
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query(developerID)
+	if err != nil {
+		return nil, fmt.Errorf("%s: execute statement: %w", op, err)
+	}
+	defer rows.Close()
+
+	var reports []entity.Report
+	for rows.Next() {
+		var report entity.Report
+		err := rows.Scan(
+			&report.ID,
+			&report.DeveloperID,
+			&report.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("%s: scan row: %w", op, err)
+		}
+		reports = append(reports, report)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: rows error: %w", op, err)
+	}
+
+	return reports, nil
+}
+
+/////////////////////////////////PROJECTS//////////////////////////////
+
+func (s *Storage) SaveProject(project entity.Project) error {
+	const op = "storage.postgres.SaveProject"
+
+	stmt, err := s.db.Prepare(`
+    INSERT INTO projects(
+      name,
+      description,
+      created_at
+    ) VALUES ($1, $2, $3)
+    RETURNING id, created_at`)
+	if err != nil {
+		return fmt.Errorf("%s: prepare statement: %w", op, err)
+	}
+	defer stmt.Close()
+
+	err = stmt.QueryRow(
+		project.Name,
+		project.Description,
+		time.Now(),
+	).Scan(&project.ID, &project.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("%s: execute statement: %w", op, err)
+	}
+	return nil
+}
+
+func (s *Storage) GetProject() ([]entity.Project, error) {
+	const op = "storage.postgres.GetProject"
+
+	stmt, err := s.db.Prepare(`
+    SELECT id, name, description, created_at
+    FROM projects
+    ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("%s: prepare statement: %w", op, err)
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		return nil, fmt.Errorf("%s: execute statement: %w", op, err)
+	}
+	defer rows.Close()
+
+	var projects []entity.Project
+	for rows.Next() {
+		var project entity.Project
+		err := rows.Scan(
+			&project.ID,
+			&project.Name,
+			&project.Description,
+			&project.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("%s: scan row: %w", op, err)
+		}
+		projects = append(projects, project)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: rows error: %w", op, err)
+	}
+
+	return projects, nil
+}
+
+func (s *Storage) GetProjectByID(ID uint) (entity.Project, error) {
+	const op = "storage.postgres.GetProjectByID"
+
+	stmt, err := s.db.Prepare(`
+    SELECT id, name, description, created_at
+    FROM projects
+    WHERE id = $1`)
+	if err != nil {
+		return entity.Project{}, fmt.Errorf("%s: prepare statement: %w", op, err)
+	}
+	defer stmt.Close()
+
+	var project entity.Project
+	err = stmt.QueryRow(ID).Scan(
+		&project.ID,
+		&project.Name,
+		&project.Description,
+		&project.CreatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return entity.Project{}, fmt.Errorf("%s: %w", op, er.ErrProjectNotFound)
+		}
+		return entity.Project{}, fmt.Errorf("%s: execute statement: %w", op, err)
+	}
+
+	return project, nil
+}
+
+func (s *Storage) UpdateProject(ID uint, project entity.Project) error {
+	const op = "storage.postgres.UpdateProject"
+
+	stmt, err := s.db.Prepare(`
+        UPDATE projects 
+        SET name = $1, description = $2, modified_at = NOW()
+        WHERE id = $3`)
+	if err != nil {
+		return fmt.Errorf("%s: prepare statement: %w", op, err)
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(project.Name, project.Description, ID)
+	if err != nil {
+		return fmt.Errorf("%s: execute statement: %w", op, err)
+	}
+	return nil
+}
+
+func (s *Storage) Close() error {
+	return s.db.Close()
+}

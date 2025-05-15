@@ -2,9 +2,9 @@ version: '3.8'
 
 services:
   app:
-    build: 
-      context: "/home/netwey/Рабочий стол/project-master/docker"
-      dockerfile: docker/Dockerfile  # Упростили путь
+    build:
+      context: "/home/netwey/Рабочий стол/project-master"
+      dockerfile: "Dockerfile"
     ports:
       - "8080:8080"
     depends_on:
@@ -17,6 +17,9 @@ services:
       - DB_NAME=task_calendar
       - DB_PORT=5432
       - DB_SSL_MODE=disable
+      - CONFIG_PATH=/app/local.yaml
+    volumes:
+       - ./local.yaml:/app/local.yaml:ro
     restart: unless-stopped
 
   db:
@@ -27,7 +30,7 @@ services:
       - POSTGRES_DB=task_calendar
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init:/docker-entrypoint-initdb.d  # Упрощенный путь
+      - ./docker/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d task_calendar"]
       interval: 5s

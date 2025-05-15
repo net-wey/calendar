@@ -2,14 +2,12 @@ package entity
 
 import (
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type Task struct {
-	ID               uuid.UUID
-	ReportID         uuid.UUID
-	ProjectID        uuid.UUID
+	ID               uint
+	ReportID         uint
+	ProjectID        uint
 	Name             string
 	DeveloperNote    string
 	EstimatePlaned   int
